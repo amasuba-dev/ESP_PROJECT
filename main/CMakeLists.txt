@@ -1,0 +1,24 @@
+idf_component_register(
+    SRCS
+        "app_main.c"
+        "sensors/temperature.c"
+        "sensors/current.c"
+        "sensors/mpu6050.c"
+        "sensors/reed_switch.c"
+        "modem/sim7670x.c"
+        "portal/portal.c"
+    INCLUDE_DIRS
+        "."
+        "sensors"
+        "modem"
+        "portal"
+    REQUIRES
+        esp_adc
+        esp_driver_i2c
+        esp_driver_uart
+        esp_driver_gpio
+        freertos
+        log
+        nvs_flash
+        esp_timer
+)

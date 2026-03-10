@@ -1,0 +1,124 @@
+menu "ESP Project Configuration"
+
+    menu "Sensor Pin Configuration"
+
+        config TEMP_ADC_CHANNEL
+            int "Temperature sensor ADC1 channel (0=GPIO1, 1=GPIO2, ...)"
+            default 0
+            range 0 9
+            help
+                ADC1 channel for HFT 105.5/2.7 temperature sensor.
+                Energy Monitor Shield A1 pin. Adjust per board pinout.
+
+        config CURRENT_ADC_CHANNEL
+            int "Current sensor ADC1 channel (0=GPIO1, 1=GPIO2, ...)"
+            default 1
+            range 0 9
+            help
+                ADC1 channel for SCT013 30A/1V on Energy Monitor Shield A0.
+
+        config I2C_SDA_GPIO
+            int "I2C SDA GPIO number"
+            default 8
+            help
+                GPIO for I2C SDA. Used by MPU-6050 and optional OLED.
+                Energy Monitor Shield A4 (Arduino) → typically GPIO8 on ESP32-S3A.
+
+        config I2C_SCL_GPIO
+            int "I2C SCL GPIO number"
+            default 9
+            help
+                GPIO for I2C SCL.
+                Energy Monitor Shield A5 (Arduino) → typically GPIO9 on ESP32-S3A.
+
+        config REED_SWITCH_GPIO
+            int "Reed switch GPIO number"
+            default 10
+            help
+                GPIO pin connected to the reed switch (active-low with internal pull-up).
+
+    endmenu
+
+    menu "RS485 / MAX485 Configuration"
+
+        config RS485_UART_PORT
+            int "RS485 UART port (0-2)"
+            default 1
+            range 0 2
+
+        config RS485_TX_GPIO
+            int "RS485 TX GPIO (MAX485 DI pin)"
+            default 17
+            help
+                Energy Monitor Shield D1 → connect to MAX485 DI.
+
+        config RS485_RX_GPIO
+            int "RS485 RX GPIO (MAX485 RO pin)"
+            default 18
+            help
+                Energy Monitor Shield D0 → connect to MAX485 RO.
+
+        config RS485_DE_GPIO
+            int "RS485 DE/RE GPIO (MAX485 direction control)"
+            default 15
+            help
+                Energy Monitor Shield D5. HIGH=transmit, LOW=receive.
+
+    endmenu
+
+    menu "SIM7670X 4G Modem Configuration"
+
+        config SIM7670X_UART_PORT
+            int "SIM7670X UART port (0-2)"
+            default 2
+            range 0 2
+
+        config SIM7670X_TX_GPIO
+            int "SIM7670X TX GPIO (ESP TX → Modem RX)"
+            default 43
+
+        config SIM7670X_RX_GPIO
+            int "SIM7670X RX GPIO (ESP RX ← Modem TX)"
+            default 44
+
+        config SIM7670X_BAUD_RATE
+            int "SIM7670X baud rate"
+            default 115200
+
+    endmenu
+
+    menu "Portal / Cloud Configuration"
+
+        config PORTAL_URL
+            string "HTTP POST endpoint URL"
+            default "http://your-portal-server.com/api/data"
+            help
+                Full URL where JSON sensor data is posted every measurement cycle.
+
+        config DEVICE_ID
+            string "Device identifier string"
+            default "ESP32-S3-001"
+            help
+                Unique name for this device shown in the portal.
+
+        config MEASURE_INTERVAL_MS
+            int "Measurement interval (milliseconds)"
+            default 10000
+            range 1000 3600000
+            help
+                How often to read all sensors and send to portal.
+
+    endmenu
+
+    menu "Electrical Calibration"
+
+        config SUPPLY_VOLTAGE
+            int "Mains supply voltage (V)"
+            default 220
+            range 100 240
+            help
+                Local mains voltage used for apparent power calculation (V × Irms).
+
+    endmenu
+
+endmenu

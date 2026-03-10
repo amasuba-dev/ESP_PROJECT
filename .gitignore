@@ -1,0 +1,20 @@
+# ESP-IDF build output
+build/
+sdkconfig
+sdkconfig.old
+
+# Managed components (downloaded by idf component manager)
+managed_components/
+
+# IDE / OS files
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Logs
+*.log
