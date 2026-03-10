@@ -25,11 +25,16 @@ esp_err_t portal_send(const sensor_data_t *data)
     char json[JSON_BUF];
     char resp[RESP_BUF];
 
+    static const char * const event_str[] = { "data", "wake", "sleep" };
+    const char *ev = (data->event <= PORTAL_EVENT_SLEEP)
+                     ? event_str[data->event] : "data";
+
     /* Build JSON payload -------------------------------------------------- */
     int n = snprintf(json, sizeof(json),
         "{"
           "\"device_id\":\"%s\","
           "\"timestamp\":%lld,"
+          "\"event\":\"%s\","
           "\"temperature\":{\"value\":%.2f,\"valid\":%s},"
           "\"current\":{"
             "\"irms\":%.3f,"
@@ -47,6 +52,7 @@ esp_err_t portal_send(const sensor_data_t *data)
         "}",
         CONFIG_DEVICE_ID,
         (long long)data->timestamp_ms,
+        ev,
         data->temperature.temperature_c,
         data->temperature.valid ? "true" : "false",
         data->current.irms_a,
@@ -70,6 +76,6 @@ esp_err_t portal_send(const sensor_data_t *data)
         return ESP_ERR_NO_MEM;
     }
 
-    ESP_LOGD(TAG, "POST → %s", json);
+    ESP_LOGD(TAG, "POST [%s] → %s", ev, json);
     return sim7670x_http_post(CONFIG_PORTAL_URL, json, resp, sizeof(resp));
 }

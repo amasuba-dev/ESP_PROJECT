@@ -21,4 +21,5 @@ idf_component_register(
         log
         nvs_flash
         esp_timer
+        esp_sleep
 )

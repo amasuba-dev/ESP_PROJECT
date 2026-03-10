@@ -164,3 +164,18 @@ term:
     at_cmd("AT+HTTPTERM", "OK", NULL, 0, AT_TIMEOUT_MS);
     return ESP_OK;
 }
+
+esp_err_t sim7670x_get_network_time(char *buf, size_t buf_len)
+{
+    if (!buf || buf_len == 0) return ESP_ERR_INVALID_ARG;
+
+    /* Enable automatic time sync from network (NITZ) */
+    at_cmd("AT+CTZU=1", "OK", NULL, 0, AT_TIMEOUT_MS);
+
+    if (at_cmd("AT+CCLK?", "+CCLK:", buf, buf_len, AT_TIMEOUT_MS)) {
+        ESP_LOGD(TAG, "CCLK: %s", buf);
+        return ESP_OK;
+    }
+    ESP_LOGW(TAG, "AT+CCLK? failed – network time unavailable");
+    return ESP_FAIL;
+}
