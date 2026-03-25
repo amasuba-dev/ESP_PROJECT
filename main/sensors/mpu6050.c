@@ -17,23 +17,30 @@
 #define TEMP_OFFSET_C       36.53f
 
 static const char *TAG = "mpu6050";
-static i2c_master_dev_handle_t s_dev;
+static i2c_port_t s_i2c_port;
 
 static esp_err_t write_reg(uint8_t reg, uint8_t val)
 {
-    uint8_t buf[2] = {reg, val};
-    return i2c_master_transmit(s_dev, buf, sizeof(buf), 100);
+    uint8_t data[2] = {reg, val};
+    return i2c_master_write_to_device(s_i2c_port, MPU6050_ADDR, data, sizeof(data), pdMS_TO_TICKS(100));
 }
 
-esp_err_t mpu6050_init(i2c_master_bus_handle_t bus_handle)
+esp_err_t mpu6050_init(i2c_port_t i2c_port)
 {
-    i2c_device_config_t dev_cfg = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address  = MPU6050_ADDR,
-        .scl_speed_hz    = 400000,
-    };
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &s_dev));
+    s_i2c_port = i2c_port;
 
+    /* Wake from sleep (default after power-on is sleep mode) */
+    ESP_ERROR_CHECK(write_reg(REG_PWR_MGMT_1, 0x00));
+
+    /* ±2 g accelerometer range (AFS_SEL = 0) */
+    ESP_ERROR_CHECK(write_reg(REG_ACCEL_CONFIG, 0x00));
+
+    /* ±250 °/s gyroscope range (FS_SEL = 0) */
+    ESP_ERROR_CHECK(write_reg(REG_GYRO_CONFIG, 0x00));
+
+    ESP_LOGI(TAG, "MPU-6050 ready at I2C 0x%02X", MPU6050_ADDR);
+    return ESP_OK;
+}
     /* Wake from sleep (default after power-on is sleep mode) */
     ESP_ERROR_CHECK(write_reg(REG_PWR_MGMT_1, 0x00));
 
@@ -52,7 +59,7 @@ esp_err_t mpu6050_read(mpu6050_reading_t *reading)
     uint8_t reg = REG_ACCEL_XOUT_H;
     uint8_t buf[14];
 
-    esp_err_t ret = i2c_master_transmit_receive(s_dev, &reg, 1, buf, sizeof(buf), 100);
+    esp_err_t ret = i2c_master_write_read_device(s_i2c_port, MPU6050_ADDR, &reg, 1, buf, sizeof(buf), pdMS_TO_TICKS(100));
     if (ret != ESP_OK) {
         reading->valid = false;
         return ret;

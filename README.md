@@ -1,7 +1,7 @@
 # ESP_PROJECT
 
 Embedded firmware for the **ESP32-S3A / SIM7670X-4G** sensor node.  
-Reads environmental and electrical parameters, transmits JSON payloads to a cloud portal via 4G, and observes a configurable day/night schedule aligned to **South African Standard Time (SAST, UTC+2)**.
+Reads electrical current parameters, transmits JSON payloads to a cloud portal via 4G, and observes a configurable day/night schedule aligned to **South African Standard Time (SAST, UTC+2)**.
 
 ---
 
@@ -11,26 +11,160 @@ Reads environmental and electrical parameters, transmits JSON payloads to a clou
 |-----------|-------|-----------|
 | Microcontroller | ESP32-S3A (QFN56, rev 0.2) | — |
 | 4G Modem | SIM7670X | UART (AT commands) |
-| Temperature Sensor | HFT 105.5/2.7 NTC Thermistor | ADC (voltage divider) |
 | Current Sensor | SCT013 30A/1V, Class 1 (YHDC) | ADC (Energy Monitor Shield A0) |
-| Accelerometer / Gyro | MPU-6050 SY-104 | I2C |
-| Reed Switch | Magnetic door/window sensor | GPIO (interrupt) |
-| Energy Monitor Shield | v2 (devicter.ru / Seeed 106990026) | ADC · I2C · RS485 |
+| Energy Monitor Shield | v2 (devicter.ru / Seeed 106990026) | ADC |
 
 ### Energy Monitor Shield V2 — Pin Mapping
 
 | Shield Pin | Function | ESP32-S3A GPIO |
 |------------|----------|----------------|
-| A0 | Current sensor (SCT013) | Configurable via `menuconfig` |
-| A1 | Temperature sensor (HFT 105.5/2.7) | Configurable via `menuconfig` |
-| A4 / SDA | I2C Data | Configurable via `menuconfig` |
-| A5 / SCL | I2C Clock | Configurable via `menuconfig` |
-| D0 / RX | RS485 MAX485 RO | Configurable via `menuconfig` |
-| D1 / TX | RS485 MAX485 DI | Configurable via `menuconfig` |
-| D5 | RS485 Direction (DE/RE) | Configurable via `menuconfig` |
+| A0 | Current sensor (SCT013) | GPIO4 (PIN_7) |
+| GND | Common ground | GND (PIN_2) |
+| 3.3V | Power | 3.3V (PIN_1) |
 
-> Exact GPIO assignments depend on how the shield is wired to the ESP32-S3A breakout.  
-> Set all pins via **`idf.py menuconfig` → ESP Project Configuration**.
+> The shield provides the bias circuit for the SCT013 current clamp.  
+> Wire A0 to ESP32-S3A GPIO4 (PIN_7) for ADC input.
+
+---
+
+## Project Structure
+
+```
+ESP_PROJECT/
+├── CMakeLists.txt
+├── sdkconfig.defaults          # esp32s3 defaults
+├── .gitignore
+├── README.md
+└── main/
+    ├── CMakeLists.txt
+    ├── Kconfig.projbuild        # All runtime config (pins, URL, intervals)
+    ├── app_main.c               # Scheduler + main measurement loop
+    ├── sensors/
+    │   ├── current.c/h          # SCT013 30A/1V → Irms, power, energy
+    ├── modem/
+    │   ├── sim7670x.c/h         # UART AT driver + HTTP POST
+    └── portal/
+        ├── portal.c/h           # JSON serialization + event field
+```
+
+---
+
+## SAST Sleep Schedule
+
+The device operates on a **day/night cycle aligned to SAST (UTC+2)**:
+
+- **Daytime (06:00–18:00 SAST)**: Continuous measurement every 10 seconds
+- **Nighttime (18:00–06:00 SAST)**: Deep sleep with timer wakeup
+
+Network time is synced via SIM7670X AT+CCLK. If time unavailable, operates continuously.
+
+---
+
+## JSON Payload Schema
+
+```json
+{
+  "device": "ESP32-S3-001",
+  "timestamp_ms": 1700000000000,
+  "event": "data|wake|sleep",
+  "current": {
+    "irms_a": 1.234,
+    "power_w": 271.0,
+    "energy_kwh": 0.0001
+  },
+  "signal_rssi_dbm": -75
+}
+```
+
+- **`event`**: `"data"` (normal measurement), `"wake"` (startup), `"sleep"` (shutdown)
+- **`current`**: SCT013 readings (RMS current, apparent power, accumulated energy)
+- **`signal_rssi_dbm`**: 4G signal strength
+
+---
+
+## Build & Flash
+
+```bash
+# Configure pins (optional — defaults match hardware)
+idf.py menuconfig
+
+# Build
+idf.py build
+
+# Flash to ESP32-S3 on COM4
+idf.py -p COM4 flash
+
+# Monitor serial output
+idf.py -p COM4 monitor
+```
+
+---
+
+## menuconfig Options
+
+| Path | Key | Default | Description |
+|------|-----|---------|-------------|
+| ESP Project Configuration → Sensor Pin Configuration | `CURRENT_ADC_CHANNEL` | 4 | ADC1 CH4 = GPIO4 (PIN_7) |
+| ESP Project Configuration → Device Settings | `DEVICE_ID` | "ESP32-S3-001" | Unique device name |
+| ESP Project Configuration → Portal Settings | `PORTAL_URL` | "http://portal.example.com/api/data" | HTTP POST endpoint |
+| ESP Project Configuration → Measurement Settings | `MEASURE_INTERVAL_MS` | 10000 | Sensor read interval (ms) |
+| ESP Project Configuration → Electrical Calibration | `SUPPLY_VOLTAGE` | 220 | Mains voltage (V) for power calc |
+
+---
+
+## Portal Integration
+
+The device sends HTTP POST requests with JSON payloads. Implement a server endpoint that:
+
+1. Accepts `application/json` POSTs
+2. Parses the schema above
+3. Stores readings in a database
+4. Returns 200 OK on success
+
+Example server code (Node.js/Express):
+
+```javascript
+app.post('/api/data', (req, res) => {
+  const data = req.body;
+  console.log(`Device ${data.device}: ${data.current.irms_a}A`);
+  // Store in DB...
+  res.sendStatus(200);
+});
+```
+
+---
+
+## Calibration
+
+### Current Sensor (SCT013-030-1V)
+
+1. Clamp around **one conductor only** (live or neutral)
+2. Apply known resistive load (e.g., 1000W heater)
+3. Measure actual current with multimeter
+4. Adjust `CURRENT_CAL` in `current.c`:
+   ```
+   #define CURRENT_CAL  30.0f  // Tune this value
+   ```
+5. Rebuild and reflash
+
+### Energy Accumulation
+
+Energy (kWh) accumulates across deep sleep cycles using NVS flash storage.
+
+---
+
+## Troubleshooting
+
+- **No current readings**: Check SCT013 jack in CT1 socket, clamp orientation
+- **Portal connection fails**: Verify SIM card, APN settings in `sim7670x.c`
+- **Time sync fails**: Check SIM7670X network registration
+- **Deep sleep not working**: Confirm GPIO4 not conflicting with other peripherals
+
+---
+
+## License
+
+MIT License — see LICENSE file.
 
 ---
 

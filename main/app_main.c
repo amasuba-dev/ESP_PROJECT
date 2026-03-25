@@ -4,7 +4,7 @@
 #include "esp_timer.h"
 #include "esp_sleep.h"
 #include "nvs_flash.h"
-#include "driver/i2c_master.h"
+#include "driver/i2c.h"
 #include "esp_adc/adc_oneshot.h"
 #include <string.h>
 #include <stdio.h>
@@ -16,6 +16,7 @@
 #include "modem/sim7670x.h"
 #include "portal/portal.h"
 #include "sdkconfig.h"
+
 
 static const char *TAG = "app_main";
 
@@ -109,11 +110,11 @@ static void on_reed_event(bool state, void *arg)
 static void read_all_sensors(sensor_data_t *data)
 {
     data->timestamp_ms = esp_timer_get_time() / 1000LL;
-    temperature_read(&data->temperature);
+    // temperature_read(&data->temperature);
     current_read(&data->current);
-    mpu6050_read(&data->accelerometer);
-    data->reed_pulse_count = reed_switch_get_pulse_count();
-    data->reed_state       = reed_switch_get_state();
+    // mpu6050_read(&data->accelerometer);
+    // data->reed_pulse_count = reed_switch_get_pulse_count();
+    // data->reed_state       = reed_switch_get_state();
     sim7670x_get_signal_quality(&data->signal_rssi_dbm);
 }
 
@@ -135,21 +136,21 @@ void app_main(void)
     ESP_ERROR_CHECK(adc_oneshot_new_unit(&adc_cfg, &adc1));
 
     /* ── Shared I2C bus ───────────────────────────────────────────────── */
-    i2c_master_bus_config_t i2c_cfg = {
-        .i2c_port                     = I2C_NUM_0,
-        .sda_io_num                   = CONFIG_I2C_SDA_GPIO,
-        .scl_io_num                   = CONFIG_I2C_SCL_GPIO,
-        .clk_source                   = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt            = 7,
-        .flags.enable_internal_pullup = true,
+    i2c_config_t i2c_cfg = {
+        .mode = I2C_MODE_MASTER,
+        .sda_io_num = CONFIG_I2C_SDA_GPIO,
+        .scl_io_num = CONFIG_I2C_SCL_GPIO,
+        .sda_pullup_en = GPIO_PULLUP_ENABLE,
+        .scl_pullup_en = GPIO_PULLUP_ENABLE,
+        .master.clk_speed = 400000,
     };
-    i2c_master_bus_handle_t i2c_bus;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_cfg, &i2c_bus));
+    ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2c_cfg));
+    ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0));
 
     /* ── Sensors ──────────────────────────────────────────────────────── */
     ESP_ERROR_CHECK(temperature_init(adc1));
     ESP_ERROR_CHECK(current_init(adc1));
-    ESP_ERROR_CHECK(mpu6050_init(i2c_bus));
+    ESP_ERROR_CHECK(mpu6050_init(I2C_NUM_0));
     ESP_ERROR_CHECK(reed_switch_init(CONFIG_REED_SWITCH_GPIO, on_reed_event, NULL));
 
     /* ── 4G modem + portal ────────────────────────────────────────────── */
@@ -179,6 +180,7 @@ void app_main(void)
 
     /* ── Main daytime loop ───────────────────────────────────────────── */
     while (1) {
+        
         /* Refresh time every cycle for accurate sleep decision */
         memset(time_resp, 0, sizeof(time_resp));
         sim7670x_get_network_time(time_resp, sizeof(time_resp));

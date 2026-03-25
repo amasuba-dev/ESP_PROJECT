@@ -1,7 +1,7 @@
 #pragma once
 
 #include "esp_err.h"
-#include "driver/i2c_master.h"
+#include "driver/i2c.h"
 
 typedef struct {
     float accel_x, accel_y, accel_z;   /* m/s²  */
