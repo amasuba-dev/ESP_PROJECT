@@ -1,5 +1,7 @@
 #include "mpu6050.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 /* MPU-6050 I2C address (AD0 pin LOW = 0x68, HIGH = 0x69) */
 #define MPU6050_ADDR        0x68
@@ -29,26 +31,26 @@ esp_err_t mpu6050_init(i2c_port_t i2c_port)
 {
     s_i2c_port = i2c_port;
 
-    /* Wake from sleep (default after power-on is sleep mode) */
-    ESP_ERROR_CHECK(write_reg(REG_PWR_MGMT_1, 0x00));
+    /* Retry wake-up — sensor may need time after power-on */
+    esp_err_t ret = ESP_FAIL;
+    for (int attempt = 0; attempt < 5; attempt++) {
+        ret = write_reg(REG_PWR_MGMT_1, 0x00);
+        if (ret == ESP_OK) break;
+        ESP_LOGW(TAG, "MPU-6050 wake attempt %d/5 failed (0x%x)", attempt + 1, ret);
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "MPU-6050 not responding at I2C 0x%02X – check wiring (SDA/SCL/VCC/GND)", MPU6050_ADDR);
+        return ret;
+    }
 
     /* ±2 g accelerometer range (AFS_SEL = 0) */
-    ESP_ERROR_CHECK(write_reg(REG_ACCEL_CONFIG, 0x00));
+    ret = write_reg(REG_ACCEL_CONFIG, 0x00);
+    if (ret != ESP_OK) return ret;
 
     /* ±250 °/s gyroscope range (FS_SEL = 0) */
-    ESP_ERROR_CHECK(write_reg(REG_GYRO_CONFIG, 0x00));
-
-    ESP_LOGI(TAG, "MPU-6050 ready at I2C 0x%02X", MPU6050_ADDR);
-    return ESP_OK;
-}
-    /* Wake from sleep (default after power-on is sleep mode) */
-    ESP_ERROR_CHECK(write_reg(REG_PWR_MGMT_1, 0x00));
-
-    /* ±2 g accelerometer range (AFS_SEL = 0) */
-    ESP_ERROR_CHECK(write_reg(REG_ACCEL_CONFIG, 0x00));
-
-    /* ±250 °/s gyroscope range (FS_SEL = 0) */
-    ESP_ERROR_CHECK(write_reg(REG_GYRO_CONFIG, 0x00));
+    ret = write_reg(REG_GYRO_CONFIG, 0x00);
+    if (ret != ESP_OK) return ret;
 
     ESP_LOGI(TAG, "MPU-6050 ready at I2C 0x%02X", MPU6050_ADDR);
     return ESP_OK;

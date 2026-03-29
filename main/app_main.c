@@ -110,11 +110,11 @@ static void on_reed_event(bool state, void *arg)
 static void read_all_sensors(sensor_data_t *data)
 {
     data->timestamp_ms = esp_timer_get_time() / 1000LL;
-    // temperature_read(&data->temperature);
+    temperature_read(&data->temperature);
     current_read(&data->current);
-    // mpu6050_read(&data->accelerometer);
-    // data->reed_pulse_count = reed_switch_get_pulse_count();
-    // data->reed_state       = reed_switch_get_state();
+    mpu6050_read(&data->accelerometer);
+    data->reed_pulse_count = reed_switch_get_pulse_count();
+    data->reed_state       = reed_switch_get_state();
     sim7670x_get_signal_quality(&data->signal_rssi_dbm);
 }
 
@@ -147,17 +147,23 @@ void app_main(void)
     ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2c_cfg));
     ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0));
 
+    /* ── Wait for I2C devices to stabilize ──────────────────────────── */
+    vTaskDelay(pdMS_TO_TICKS(100));
+
     /* ── Sensors ──────────────────────────────────────────────────────── */
     ESP_ERROR_CHECK(temperature_init(adc1));
     ESP_ERROR_CHECK(current_init(adc1));
-    ESP_ERROR_CHECK(mpu6050_init(I2C_NUM_0));
+    esp_err_t mpu_ret = mpu6050_init(I2C_NUM_0);
+    if (mpu_ret != ESP_OK) {
+        ESP_LOGW(TAG, "MPU6050 init failed – accelerometer/gyroscope data will be unavailable");
+    }
     ESP_ERROR_CHECK(reed_switch_init(CONFIG_REED_SWITCH_GPIO, on_reed_event, NULL));
 
     /* ── 4G modem + portal ────────────────────────────────────────────── */
     ESP_ERROR_CHECK(sim7670x_init());
     ESP_ERROR_CHECK(portal_init());
 
-    ESP_LOGI(TAG, "All components ready. Interval: %d ms", CONFIG_MEASURE_INTERVAL_MS);
+    ESP_LOGI(TAG, "All components ready. Interval: 10000 ms");
 
     /* ── Get network time for scheduling ─────────────────────────────── */
     char time_resp[128] = {0};
@@ -178,6 +184,10 @@ void app_main(void)
     portal_send(&data);
     reed_switch_reset_pulse_count();
 
+    /* ── Initial delay to stabilize ──────────────────────────────────── */
+    ESP_LOGI(TAG, "Waiting 10 seconds before starting main loop...");
+    vTaskDelay(pdMS_TO_TICKS(10000));
+
     /* ── Main daytime loop ───────────────────────────────────────────── */
     while (1) {
         
@@ -186,8 +196,9 @@ void app_main(void)
         sim7670x_get_network_time(time_resp, sizeof(time_resp));
         utc = parse_cclk(time_resp);
 
+        /* ── Sleep scheduling disabled – device stays active 24/7 ────
         if (!is_daytime(&utc)) {
-            /* ── Send sleep status, then enter deep sleep ──────────── */
+            // Send sleep status, then enter deep sleep
             ESP_LOGI(TAG, "18:00 SAST reached – sending sleep update");
             memset(&data, 0, sizeof(data));
             read_all_sensors(&data);
@@ -201,31 +212,61 @@ void app_main(void)
 
             esp_sleep_enable_timer_wakeup(sleep_us);
             esp_deep_sleep_start();
-            /* ── Does not return ── */
+            // Does not return
         }
+        ─────────────────────────────────────────────────────────────── */
 
-        /* ── Daytime measurement ───────────────────────────────────── */
+        /* ── Measurement ───────────────────────────────────────────── */
         memset(&data, 0, sizeof(data));
         read_all_sensors(&data);
         data.event = PORTAL_EVENT_DATA;
 
         int sast_h = utc.valid ? (utc.hour + SAST_OFFSET_H) % 24 : -1;
-        ESP_LOGI(TAG,
-                 "[SAST ~%02d:%02d]  T=%.2f°C  I=%.3fA  P=%.1fW  "
-                 "E=%.4fkWh  Reed=%lu  RSSI=%ddBm",
-                 sast_h, utc.min,
-                 data.temperature.temperature_c,
-                 data.current.irms_a,
-                 data.current.power_w,
-                 data.current.energy_kwh,
-                 (unsigned long)data.reed_pulse_count,
-                 data.signal_rssi_dbm);
+
+        ESP_LOGI(TAG, "========================================");
+        ESP_LOGI(TAG, "  SENSOR READINGS  [SAST ~%02d:%02d]", sast_h, utc.min);
+        ESP_LOGI(TAG, "========================================");
+
+        ESP_LOGI(TAG, "--- TEMPERATURE ---");
+        ESP_LOGI(TAG, "  Value : %.2f C", data.temperature.temperature_c);
+        ESP_LOGI(TAG, "  Valid : %s", data.temperature.valid ? "YES" : "NO");
+
+        ESP_LOGI(TAG, "--- CURRENT SENSOR (SCT013) ---");
+        ESP_LOGI(TAG, "  Irms    : %.3f A", data.current.irms_a);
+        ESP_LOGI(TAG, "  Power   : %.1f W", data.current.power_w);
+        ESP_LOGI(TAG, "  Energy  : %.4f kWh", data.current.energy_kwh);
+        ESP_LOGI(TAG, "  Valid   : %s", data.current.valid ? "YES" : "NO");
+
+        ESP_LOGI(TAG, "--- ACCELEROMETER (MPU6050) ---");
+        ESP_LOGI(TAG, "  Accel X : %+.3f m/s2", data.accelerometer.accel_x);
+        ESP_LOGI(TAG, "  Accel Y : %+.3f m/s2", data.accelerometer.accel_y);
+        ESP_LOGI(TAG, "  Accel Z : %+.3f m/s2", data.accelerometer.accel_z);
+
+        ESP_LOGI(TAG, "--- GYROSCOPE (MPU6050) ---");
+        ESP_LOGI(TAG, "  Gyro  X : %+.2f deg/s", data.accelerometer.gyro_x);
+        ESP_LOGI(TAG, "  Gyro  Y : %+.2f deg/s", data.accelerometer.gyro_y);
+        ESP_LOGI(TAG, "  Gyro  Z : %+.2f deg/s", data.accelerometer.gyro_z);
+        ESP_LOGI(TAG, "  MPU Temp: %.1f C", data.accelerometer.temperature_c);
+        ESP_LOGI(TAG, "  Valid   : %s", data.accelerometer.valid ? "YES" : "NO");
+
+        ESP_LOGI(TAG, "--- REED SWITCH ---");
+        ESP_LOGI(TAG, "  State  : %s", data.reed_state ? "OPEN" : "CLOSED");
+        ESP_LOGI(TAG, "  Pulses : %lu", (unsigned long)data.reed_pulse_count);
+
+        ESP_LOGI(TAG, "--- 4G SIGNAL ---");
+        ESP_LOGI(TAG, "  RSSI : %d dBm  (%s)",
+                 data.signal_rssi_dbm,
+                 data.signal_rssi_dbm > -80  ? "EXCELLENT" :
+                 data.signal_rssi_dbm > -90  ? "GOOD" :
+                 data.signal_rssi_dbm > -100 ? "FAIR" : "POOR");
+        ESP_LOGI(TAG, "========================================");
 
         esp_err_t ret = portal_send(&data);
         if (ret != ESP_OK) {
             ESP_LOGW(TAG, "Portal send failed – will retry next cycle");
         }
 
-        vTaskDelay(pdMS_TO_TICKS(CONFIG_MEASURE_INTERVAL_MS));
+        ESP_LOGI(TAG, "Next reading in 10 seconds...\n");
+        vTaskDelay(pdMS_TO_TICKS(10000));
     }
 }
