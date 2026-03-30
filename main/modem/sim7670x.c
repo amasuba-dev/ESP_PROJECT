@@ -64,6 +64,19 @@ static bool at_cmd(const char *cmd, const char *expect,
 
 esp_err_t sim7670x_init(void)
 {
+    /* UART0 default console uses GPIO43/44 on ESP32-S3 dev boards.
+     * Reusing these pins for the modem causes serial contention.
+     */
+#if CONFIG_ESP_CONSOLE_UART && (CONFIG_ESP_CONSOLE_UART_NUM == 0)
+    if ((CONFIG_SIM7670X_TX_GPIO == 43 && CONFIG_SIM7670X_RX_GPIO == 44) ||
+        (CONFIG_SIM7670X_TX_GPIO == 44 && CONFIG_SIM7670X_RX_GPIO == 43)) {
+        ESP_LOGE(TAG,
+                 "SIM7670X pins conflict with UART0 console (GPIO43/44). "
+                 "Set CONFIG_SIM7670X_TX_GPIO/CONFIG_SIM7670X_RX_GPIO to free pins.");
+        return ESP_ERR_INVALID_ARG;
+    }
+#endif
+
     uart_config_t cfg = {
         .baud_rate  = CONFIG_SIM7670X_BAUD_RATE,
         .data_bits  = UART_DATA_8_BITS,

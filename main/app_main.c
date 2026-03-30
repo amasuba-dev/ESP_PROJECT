@@ -19,6 +19,7 @@
 
 
 static const char *TAG = "app_main";
+static bool s_modem_ready = false;
 
 /* ── SAST schedule ──────────────────────────────────────────────────────────
  * SAST = UTC+2.  Modem provides UTC via AT+CCLK.
@@ -115,7 +116,11 @@ static void read_all_sensors(sensor_data_t *data)
     mpu6050_read(&data->accelerometer);
     data->reed_pulse_count = reed_switch_get_pulse_count();
     data->reed_state       = reed_switch_get_state();
-    sim7670x_get_signal_quality(&data->signal_rssi_dbm);
+    if (s_modem_ready) {
+        sim7670x_get_signal_quality(&data->signal_rssi_dbm);
+    } else {
+        data->signal_rssi_dbm = -999;
+    }
 }
 
 /* ── app_main ───────────────────────────────────────────────────────────── */
@@ -160,14 +165,25 @@ void app_main(void)
     ESP_ERROR_CHECK(reed_switch_init(CONFIG_REED_SWITCH_GPIO, on_reed_event, NULL));
 
     /* ── 4G modem + portal ────────────────────────────────────────────── */
-    ESP_ERROR_CHECK(sim7670x_init());
-    ESP_ERROR_CHECK(portal_init());
+    esp_err_t modem_ret = sim7670x_init();
+    if (modem_ret == ESP_OK) {
+        esp_err_t portal_ret = portal_init();
+        s_modem_ready = (portal_ret == ESP_OK);
+        if (!s_modem_ready) {
+            ESP_LOGW(TAG, "Portal init failed; continuing without modem uplink");
+        }
+    } else {
+        s_modem_ready = false;
+        ESP_LOGW(TAG, "Modem init failed; continuing without modem uplink");
+    }
 
     ESP_LOGI(TAG, "All components ready. Interval: 10000 ms");
 
     /* ── Get network time for scheduling ─────────────────────────────── */
     char time_resp[128] = {0};
-    sim7670x_get_network_time(time_resp, sizeof(time_resp));
+    if (s_modem_ready) {
+        sim7670x_get_network_time(time_resp, sizeof(time_resp));
+    }
     utc_time_t utc = parse_cclk(time_resp);
     if (utc.valid) {
         int sast_h = (utc.hour + SAST_OFFSET_H) % 24;
@@ -181,7 +197,9 @@ void app_main(void)
     sensor_data_t data = {0};
     read_all_sensors(&data);
     data.event = PORTAL_EVENT_WAKE;
-    portal_send(&data);
+    if (s_modem_ready) {
+        portal_send(&data);
+    }
     reed_switch_reset_pulse_count();
 
     /* ── Initial delay to stabilize ──────────────────────────────────── */
@@ -193,7 +211,9 @@ void app_main(void)
         
         /* Refresh time every cycle for accurate sleep decision */
         memset(time_resp, 0, sizeof(time_resp));
-        sim7670x_get_network_time(time_resp, sizeof(time_resp));
+        if (s_modem_ready) {
+            sim7670x_get_network_time(time_resp, sizeof(time_resp));
+        }
         utc = parse_cclk(time_resp);
 
         /* ── Sleep scheduling disabled – device stays active 24/7 ────
@@ -261,9 +281,13 @@ void app_main(void)
                  data.signal_rssi_dbm > -100 ? "FAIR" : "POOR");
         ESP_LOGI(TAG, "========================================");
 
-        esp_err_t ret = portal_send(&data);
-        if (ret != ESP_OK) {
-            ESP_LOGW(TAG, "Portal send failed – will retry next cycle");
+        if (s_modem_ready) {
+            esp_err_t ret = portal_send(&data);
+            if (ret != ESP_OK) {
+                ESP_LOGW(TAG, "Portal send failed – will retry next cycle");
+            }
+        } else {
+            ESP_LOGW(TAG, "Modem/portal unavailable; skipping uplink this cycle");
         }
 
         ESP_LOGI(TAG, "Next reading in 10 seconds...\n");

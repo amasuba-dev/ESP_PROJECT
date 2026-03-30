@@ -19,17 +19,17 @@ menu "ESP Project Configuration"
 
         config I2C_SDA_GPIO
             int "I2C SDA GPIO number"
-            default 8
+            default 9
             help
                 GPIO for I2C SDA. Used by MPU-6050 and optional OLED.
-                Energy Monitor Shield A4 (Arduino) → typically GPIO8 on ESP32-S3A.
+                Waveshare ESP32-S3-A/SIM7670X-4G default wiring uses GPIO9.
 
         config I2C_SCL_GPIO
             int "I2C SCL GPIO number"
-            default 9
+            default 6
             help
                 GPIO for I2C SCL.
-                Energy Monitor Shield A5 (Arduino) → typically GPIO9 on ESP32-S3A.
+                Waveshare ESP32-S3-A/SIM7670X-4G default wiring uses GPIO6.
 
         config REED_SWITCH_GPIO
             int "Reed switch GPIO number"
@@ -76,10 +76,16 @@ menu "ESP Project Configuration"
         config SIM7670X_TX_GPIO
             int "SIM7670X TX GPIO (ESP TX → Modem RX)"
             default 43
+            help
+                On Waveshare ESP32-S3-A/SIM7670X-4G this is fixed to GPIO43.
+                Use USB Serial/JTAG console mode to avoid UART0 pin contention.
 
         config SIM7670X_RX_GPIO
             int "SIM7670X RX GPIO (ESP RX ← Modem TX)"
             default 44
+            help
+                On Waveshare ESP32-S3-A/SIM7670X-4G this is fixed to GPIO44.
+                Use USB Serial/JTAG console mode to avoid UART0 pin contention.
 
         config SIM7670X_BAUD_RATE
             int "SIM7670X baud rate"
