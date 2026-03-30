@@ -3,6 +3,7 @@
 #include "esp_log.h"
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 #include "sdkconfig.h"
 
 #define JSON_BUF  1024
@@ -47,7 +48,7 @@ esp_err_t portal_send(const sensor_data_t *data)
             "\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,"
             "\"valid\":%s"
           "},"
-          "\"reed\":{\"pulses\":%lu,\"state\":%s},"
+          "\"reed\":{\"pulses\":%" PRIu32 ",\"state\":%s},"
           "\"rssi_dbm\":%d"
         "}",
         CONFIG_DEVICE_ID,
@@ -66,7 +67,7 @@ esp_err_t portal_send(const sensor_data_t *data)
         data->accelerometer.gyro_y,
         data->accelerometer.gyro_z,
         data->accelerometer.valid ? "true" : "false",
-        (unsigned long)data->reed_pulse_count,
+        data->reed_pulse_count,
         data->reed_state ? "true" : "false",
         data->signal_rssi_dbm
     );

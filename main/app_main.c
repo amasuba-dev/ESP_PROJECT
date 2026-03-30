@@ -4,7 +4,7 @@
 #include "esp_timer.h"
 #include "esp_sleep.h"
 #include "nvs_flash.h"
-#include "driver/i2c.h"
+#include "driver/i2c_master.h"
 #include "esp_adc/adc_oneshot.h"
 #include <string.h>
 #include <stdio.h>
@@ -67,6 +67,7 @@ static utc_time_t parse_cclk(const char *resp)
 }
 
 /** Returns true if current SAST hour is within daytime [DAY_START_H, DAY_END_H). */
+__attribute__((unused))
 static bool is_daytime(const utc_time_t *utc)
 {
     if (!utc->valid) return true;   /* operate normally if time unknown */
@@ -79,6 +80,7 @@ static bool is_daytime(const utc_time_t *utc)
  * Called just before sleep at 18:00 SAST, so sleep = 12 h exactly.
  * We compute the precise remaining seconds to be safe against boot delay.
  */
+__attribute__((unused))
 static uint64_t seconds_until_wake(const utc_time_t *utc)
 {
     if (!utc->valid) {
@@ -141,16 +143,16 @@ void app_main(void)
     ESP_ERROR_CHECK(adc_oneshot_new_unit(&adc_cfg, &adc1));
 
     /* ── Shared I2C bus ───────────────────────────────────────────────── */
-    i2c_config_t i2c_cfg = {
-        .mode = I2C_MODE_MASTER,
-        .sda_io_num = CONFIG_I2C_SDA_GPIO,
-        .scl_io_num = CONFIG_I2C_SCL_GPIO,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = 400000,
+    i2c_master_bus_config_t i2c_bus_cfg = {
+        .i2c_port          = I2C_NUM_0,
+        .sda_io_num        = CONFIG_I2C_SDA_GPIO,
+        .scl_io_num        = CONFIG_I2C_SCL_GPIO,
+        .clk_source        = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
     };
-    ESP_ERROR_CHECK(i2c_param_config(I2C_NUM_0, &i2c_cfg));
-    ESP_ERROR_CHECK(i2c_driver_install(I2C_NUM_0, I2C_MODE_MASTER, 0, 0, 0));
+    i2c_master_bus_handle_t i2c_bus;
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_bus_cfg, &i2c_bus));
 
     /* ── Wait for I2C devices to stabilize ──────────────────────────── */
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -158,7 +160,7 @@ void app_main(void)
     /* ── Sensors ──────────────────────────────────────────────────────── */
     ESP_ERROR_CHECK(temperature_init(adc1));
     ESP_ERROR_CHECK(current_init(adc1));
-    esp_err_t mpu_ret = mpu6050_init(I2C_NUM_0);
+    esp_err_t mpu_ret = mpu6050_init(i2c_bus);
     if (mpu_ret != ESP_OK) {
         ESP_LOGW(TAG, "MPU6050 init failed – accelerometer/gyroscope data will be unavailable");
     }
@@ -177,7 +179,7 @@ void app_main(void)
         ESP_LOGW(TAG, "Modem init failed; continuing without modem uplink");
     }
 
-    ESP_LOGI(TAG, "All components ready. Interval: 10000 ms");
+    ESP_LOGI(TAG, "All components ready. Interval: %d ms", CONFIG_MEASURE_INTERVAL_MS);
 
     /* ── Get network time for scheduling ─────────────────────────────── */
     char time_resp[128] = {0};
@@ -290,7 +292,7 @@ void app_main(void)
             ESP_LOGW(TAG, "Modem/portal unavailable; skipping uplink this cycle");
         }
 
-        ESP_LOGI(TAG, "Next reading in 10 seconds...\n");
-        vTaskDelay(pdMS_TO_TICKS(10000));
+        ESP_LOGI(TAG, "Next reading in %d ms...\n", CONFIG_MEASURE_INTERVAL_MS);
+        vTaskDelay(pdMS_TO_TICKS(CONFIG_MEASURE_INTERVAL_MS));
     }
 }

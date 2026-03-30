@@ -134,15 +134,31 @@ esp_err_t sim7670x_get_signal_quality(int *rssi_dbm)
 esp_err_t sim7670x_http_post(const char *url, const char *json,
                               char *resp_buf, size_t resp_len)
 {
-    char cmd[300];
+    char      cmd[300];
+    char      http_resp[128];
+    bool      use_ssl = (strncmp(url, "https://", 8) == 0);
+    esp_err_t result  = ESP_FAIL;
+
+    /* Configure APN if one is specified in menuconfig */
+    if (strlen(CONFIG_SIM7670X_APN) > 0) {
+        snprintf(cmd, sizeof(cmd), "AT+CNCFG=0,1,\"%s\"", CONFIG_SIM7670X_APN);
+        at_cmd(cmd, "OK", NULL, 0, AT_TIMEOUT_MS);
+    }
 
     /* Activate data bearer (PDP context 0) */
     at_cmd("AT+CNACT=0,1", "+APP PDP: 0,ACTIVE", NULL, 0, 15000);
 
+    /* Enable SSL/TLS for HTTPS URLs */
+    if (use_ssl) {
+        if (!at_cmd("AT+HTTPSSL=1", "OK", NULL, 0, AT_TIMEOUT_MS)) {
+            ESP_LOGW(TAG, "HTTPSSL enable failed – proceeding without TLS");
+        }
+    }
+
     /* Initialise HTTP stack */
     if (!at_cmd("AT+HTTPINIT", "OK", NULL, 0, AT_TIMEOUT_MS)) {
         ESP_LOGE(TAG, "HTTPINIT failed");
-        return ESP_FAIL;
+        goto done;
     }
 
     /* Set URL */
@@ -154,28 +170,35 @@ esp_err_t sim7670x_http_post(const char *url, const char *json,
                 "OK", NULL, 0, AT_TIMEOUT_MS)) goto term;
 
     /* Upload body */
-    size_t len = strlen(json);
-    snprintf(cmd, sizeof(cmd), "AT+HTTPDATA=%d,5000", (int)len);
-    if (!at_cmd(cmd, "DOWNLOAD", NULL, 0, AT_TIMEOUT_MS)) goto term;
+    {
+        size_t body_len = strlen(json);
+        snprintf(cmd, sizeof(cmd), "AT+HTTPDATA=%d,5000", (int)body_len);
+        if (!at_cmd(cmd, "DOWNLOAD", NULL, 0, AT_TIMEOUT_MS)) goto term;
+        uart_write_bytes(CONFIG_SIM7670X_UART_PORT, json, body_len);
+        if (!at_cmd(NULL, "OK", NULL, 0, 5000)) goto term;
+    }
 
-    uart_write_bytes(CONFIG_SIM7670X_UART_PORT, json, len);
-    at_cmd(NULL, "OK", NULL, 0, 5000);   /* wait for data accepted */
-
-    /* Execute POST (action=1) */
-    char http_resp[128] = {0};
+    /* Execute POST (action=1) – expect HTTP 200 */
+    memset(http_resp, 0, sizeof(http_resp));
     if (!at_cmd("AT+HTTPACTION=1", "+HTTPACTION: 1,200",
                 http_resp, sizeof(http_resp), HTTP_TIMEOUT_MS)) {
-        ESP_LOGW(TAG, "HTTP POST response: %s", http_resp);
+        ESP_LOGW(TAG, "HTTP POST non-200 response: %s", http_resp);
+        goto term;
     }
 
     /* Optionally read response body */
     if (resp_buf && resp_len) {
-        at_cmd("AT+HTTPREAD=0,512", "OK", resp_buf, (int)resp_len, AT_TIMEOUT_MS);
+        at_cmd("AT+HTTPREAD=0,512", "OK", resp_buf, resp_len, AT_TIMEOUT_MS);
     }
+    result = ESP_OK;
 
 term:
     at_cmd("AT+HTTPTERM", "OK", NULL, 0, AT_TIMEOUT_MS);
-    return ESP_OK;
+done:
+    if (use_ssl) {
+        at_cmd("AT+HTTPSSL=0", "OK", NULL, 0, AT_TIMEOUT_MS);
+    }
+    return result;
 }
 
 esp_err_t sim7670x_get_network_time(char *buf, size_t buf_len)

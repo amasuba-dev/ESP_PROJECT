@@ -19,17 +19,22 @@
 #define TEMP_OFFSET_C       36.53f
 
 static const char *TAG = "mpu6050";
-static i2c_port_t s_i2c_port;
+static i2c_master_dev_handle_t s_dev;
 
 static esp_err_t write_reg(uint8_t reg, uint8_t val)
 {
     uint8_t data[2] = {reg, val};
-    return i2c_master_write_to_device(s_i2c_port, MPU6050_ADDR, data, sizeof(data), pdMS_TO_TICKS(100));
+    return i2c_master_transmit(s_dev, data, sizeof(data), 100);
 }
 
-esp_err_t mpu6050_init(i2c_port_t i2c_port)
+esp_err_t mpu6050_init(i2c_master_bus_handle_t bus_handle)
 {
-    s_i2c_port = i2c_port;
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address  = MPU6050_ADDR,
+        .scl_speed_hz    = 400000,
+    };
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &s_dev));
 
     /* Retry wake-up — sensor may need time after power-on */
     esp_err_t ret = ESP_FAIL;
@@ -61,9 +66,10 @@ esp_err_t mpu6050_read(mpu6050_reading_t *reading)
     uint8_t reg = REG_ACCEL_XOUT_H;
     uint8_t buf[14];
 
-    esp_err_t ret = i2c_master_write_read_device(s_i2c_port, MPU6050_ADDR, &reg, 1, buf, sizeof(buf), pdMS_TO_TICKS(100));
+    esp_err_t ret = i2c_master_transmit_receive(s_dev, &reg, 1, buf, sizeof(buf), 100);
     if (ret != ESP_OK) {
         reading->valid = false;
+        ESP_LOGW(TAG, "Read failed: %s", esp_err_to_name(ret));
         return ret;
     }
 

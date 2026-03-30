@@ -91,6 +91,18 @@ menu "ESP Project Configuration"
             int "SIM7670X baud rate"
             default 115200
 
+        config SIM7670X_APN
+            string "SIM card APN (Access Point Name)"
+            default ""
+            help
+                Cellular APN for the data bearer (AT+CNCFG).
+                Leave empty to use the modem's stored default.
+                Common South African APNs:
+                  Vodacom: "web.vodacom.net"
+                  MTN:     "internet"
+                  Rain:    "internet.rain.co.za"
+                  Telkom:  "telkomsa.net"
+
     endmenu
 
     menu "Portal / Cloud Configuration"
