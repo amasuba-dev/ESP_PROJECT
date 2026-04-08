@@ -6,14 +6,15 @@
 #include <inttypes.h>
 #include "sdkconfig.h"
 
-#define JSON_BUF  1024
-#define RESP_BUF  512
+#define JSON_BUF 1024
+#define RESP_BUF 512
 
 static const char *TAG = "portal";
 
 esp_err_t portal_init(void)
 {
-    if (!sim7670x_wait_ready(30000)) {
+    if (!sim7670x_wait_ready(30000))
+    {
         ESP_LOGE(TAG, "Modem not ready – check wiring and SIM card");
         return ESP_FAIL;
     }
@@ -26,53 +27,61 @@ esp_err_t portal_send(const sensor_data_t *data)
     char json[JSON_BUF];
     char resp[RESP_BUF];
 
-    static const char * const event_str[] = { "data", "wake", "sleep" };
+    static const char *const event_str[] = {"data", "wake", "sleep"};
     const char *ev = (data->event <= PORTAL_EVENT_SLEEP)
-                     ? event_str[data->event] : "data";
+                         ? event_str[data->event]
+                         : "data";
 
     /* Build JSON payload -------------------------------------------------- */
     int n = snprintf(json, sizeof(json),
-        "{"
-          "\"device_id\":\"%s\","
-          "\"timestamp\":%lld,"
-          "\"event\":\"%s\","
-          "\"temperature\":{\"value\":%.2f,\"valid\":%s},"
-          "\"current\":{"
-            "\"irms\":%.3f,"
-            "\"power\":%.1f,"
-            "\"energy\":%.4f,"
-            "\"valid\":%s"
-          "},"
-          "\"accelerometer\":{"
-            "\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,"
-            "\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,"
-            "\"valid\":%s"
-          "},"
-          "\"reed\":{\"pulses\":%" PRIu32 ",\"state\":%s},"
-          "\"rssi_dbm\":%d"
-        "}",
-        CONFIG_DEVICE_ID,
-        (long long)data->timestamp_ms,
-        ev,
-        data->temperature.temperature_c,
-        data->temperature.valid ? "true" : "false",
-        data->current.irms_a,
-        data->current.power_w,
-        data->current.energy_kwh,
-        data->current.valid ? "true" : "false",
-        data->accelerometer.accel_x,
-        data->accelerometer.accel_y,
-        data->accelerometer.accel_z,
-        data->accelerometer.gyro_x,
-        data->accelerometer.gyro_y,
-        data->accelerometer.gyro_z,
-        data->accelerometer.valid ? "true" : "false",
-        data->reed_pulse_count,
-        data->reed_state ? "true" : "false",
-        data->signal_rssi_dbm
-    );
+                     "{"
+                     "\"device_id\":\"%s\","
+                     "\"timestamp\":%lld,"
+                     "\"event\":\"%s\","
+                     "\"temperature\":{\"value\":%.2f,\"valid\":%s},"
+                     "\"ds18b20\":{\"value\":%.2f,\"valid\":%s},"
+                     "\"current\":{"
+                     "\"irms\":%.3f,"
+                     "\"power\":%.1f,"
+                     "\"energy\":%.4f,"
+                     "\"valid\":%s"
+                     "},"
+                     "\"accelerometer\":{"
+                     "\"ax\":%.3f,\"ay\":%.3f,\"az\":%.3f,"
+                     "\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,"
+                     "\"valid\":%s"
+                     "},"
+                     "\"phototransistor\":{\"raw\":%d,\"voltage\":%.3f,\"valid\":%s},"
+                     "\"reed\":{\"pulses\":%" PRIu32 ",\"state\":%s},"
+                     "\"rssi_dbm\":%d"
+                     "}",
+                     CONFIG_DEVICE_ID,
+                     (long long)data->timestamp_ms,
+                     ev,
+                     data->temperature.temperature_c,
+                     data->temperature.valid ? "true" : "false",
+                     data->ds18b20.temperature_c,
+                     data->ds18b20.valid ? "true" : "false",
+                     data->current.irms_a,
+                     data->current.power_w,
+                     data->current.energy_kwh,
+                     data->current.valid ? "true" : "false",
+                     data->accelerometer.accel_x,
+                     data->accelerometer.accel_y,
+                     data->accelerometer.accel_z,
+                     data->accelerometer.gyro_x,
+                     data->accelerometer.gyro_y,
+                     data->accelerometer.gyro_z,
+                     data->accelerometer.valid ? "true" : "false",
+                     data->phototransistor.raw,
+                     data->phototransistor.voltage_v,
+                     data->phototransistor.valid ? "true" : "false",
+                     data->reed_pulse_count,
+                     data->reed_state ? "true" : "false",
+                     data->signal_rssi_dbm);
 
-    if (n < 0 || n >= (int)sizeof(json)) {
+    if (n < 0 || n >= (int)sizeof(json))
+    {
         ESP_LOGE(TAG, "JSON buffer overflow");
         return ESP_ERR_NO_MEM;
     }

@@ -5,6 +5,8 @@ idf_component_register(
         "sensors/current.c"
         "sensors/mpu6050.c"
         "sensors/reed_switch.c"
+        "sensors/ds18b20.c"
+        "sensors/phototransistor.c"
         "modem/sim7670x.c"
         "portal/portal.c"
     INCLUDE_DIRS

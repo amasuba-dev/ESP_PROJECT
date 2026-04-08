@@ -37,6 +37,23 @@ menu "ESP Project Configuration"
             help
                 GPIO pin connected to the reed switch (active-low with internal pull-up).
 
+        config DS18B20_GPIO
+            int "DS18B20 1-Wire data GPIO"
+            default 8
+            help
+                GPIO for the DS18B20 digital temperature sensor (1-Wire).
+                Uses open-drain mode with internal pull-up.
+                For long wires (>1 m) add an external 4.7 kΩ pull-up to 3V3.
+
+        config PHOTO_ADC_CHANNEL
+            int "Phototransistor ADC1 channel (0=GPIO1, 1=GPIO2, ...)"
+            default 2
+            range 0 9
+            help
+                ADC1 channel for BPW85C phototransistor.
+                Energy Monitor Shield terminal X2 → ESP32-S3 ADC pin.
+                Default channel 2 = GPIO3.
+
     endmenu
 
     menu "RS485 / MAX485 Configuration"
@@ -132,10 +149,31 @@ menu "ESP Project Configuration"
 
         config SUPPLY_VOLTAGE
             int "Mains supply voltage (V)"
-            default 220
+            default 230
             range 100 240
             help
                 Local mains voltage used for apparent power calculation (V × Irms).
+
+    endmenu
+
+    menu "Sleep / Wake-up Configuration"
+
+        config SLEEP_ENABLED
+            bool "Enable deep sleep scheduling (18:00→06:00 SAST)"
+            default n
+            help
+                When enabled the device enters deep sleep at 18:00 SAST and
+                wakes at 06:00 SAST via timer.  The reed switch GPIO can
+                also trigger an early wake-up (ext1 level-triggered).
+                Requires working modem clock (AT+CCLK) for time reference.
+
+        config SLEEP_WAKE_ON_REED
+            bool "Allow reed switch to wake from deep sleep"
+            depends on SLEEP_ENABLED
+            default y
+            help
+                Configure ext1 wake-up source on the reed switch GPIO so a
+                magnetic event can bring the device out of deep sleep early.
 
     endmenu
 

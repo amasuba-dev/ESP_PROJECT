@@ -5,24 +5,30 @@
 #include "sensors/temperature.h"
 #include "sensors/current.h"
 #include "sensors/mpu6050.h"
+#include "sensors/ds18b20.h"
+#include "sensors/phototransistor.h"
 
 /** Lifecycle event tag included in every JSON POST. */
-typedef enum {
-    PORTAL_EVENT_DATA  = 0,   /**< Regular measurement during day mode   */
-    PORTAL_EVENT_WAKE  = 1,   /**< First POST after waking from deep sleep */
-    PORTAL_EVENT_SLEEP = 2,   /**< Last POST before entering deep sleep   */
+typedef enum
+{
+    PORTAL_EVENT_DATA = 0,  /**< Regular measurement during day mode   */
+    PORTAL_EVENT_WAKE = 1,  /**< First POST after waking from deep sleep */
+    PORTAL_EVENT_SLEEP = 2, /**< Last POST before entering deep sleep   */
 } portal_event_t;
 
 /** Aggregated snapshot of all sensor readings for one transmission cycle. */
-typedef struct {
+typedef struct
+{
     temperature_reading_t temperature;
-    current_reading_t     current;
-    mpu6050_reading_t     accelerometer;
-    uint32_t              reed_pulse_count;
-    bool                  reed_state;           /* true=open, false=closed */
-    int64_t               timestamp_ms;         /* ms since boot            */
-    int                   signal_rssi_dbm;
-    portal_event_t        event;               /* data / wake / sleep      */
+    current_reading_t current;
+    mpu6050_reading_t accelerometer;
+    ds18b20_reading_t ds18b20;
+    phototransistor_reading_t phototransistor;
+    uint32_t reed_pulse_count;
+    bool reed_state;      /* true=open, false=closed */
+    int64_t timestamp_ms; /* ms since boot            */
+    int signal_rssi_dbm;
+    portal_event_t event; /* data / wake / sleep      */
 } sensor_data_t;
 
 /**
